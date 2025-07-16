@@ -1,0 +1,68 @@
+function [A, B, C, D, conv] = JPT_NTF(T, M, k, n, options)
+
+
+A = rand(n, k);
+B = rand(n, k);
+C = rand(n, k);
+D = rand(k, k);
+
+
+conv = zeros(1, options.maxIter);
+
+for i = progress(1:options.maxIter)
+    % A = A .* ((mode_n_matricization(T, 1) * khatri_rao(C, B)) ./ ((A*((C'*C).*(B'*B)))));
+    % B = B .* ((mode_n_matricization(T, 2) * khatri_rao(C, A) + options.rho * (M*B*D' + M'*B*D)) ./ (B*((A'*A).*(C'*C)) + options.rho * (B*D'*(B')*B*D + B*D*(B')*B*D')));
+    % C = C .* ((mode_n_matricization(T, 3) * khatri_rao(B, A)) ./ (C*((B'*B).*(A'*A))));
+    % D = D .* ((B'*M*B) ./ (B'*B*D*(B')*B));
+    size(mode_n_matricization(T, 1))
+    size0
+    a1 = (mode_n_matricization(T, 1) * khatri_rao(C, B));
+    a2 = (C'*C).*(B'*B);
+    A = a1 * pinv(a2);
+
+    b1 = mode_n_matricization(T, 2) * khatri_rao(C, A) - options.rho * (B*D'*(B')*B*D + B*D*(B')*B*D' - M*B*D' - M'*B*D);
+    b2 = ((A'*A).*(C'*C));
+
+    B =  b1 * pinv(b2);
+
+
+    c1 = mode_n_matricization(T, 3) * khatri_rao(B, A);
+    c2 = ((B'*B).*(A'*A));
+    C = c1 * pinv(c2);
+
+    BTBinv = inv(B'*B);
+    D = BTBinv * (B'*M*B) * BTBinv;
+
+    J = 0.5 * (norm(T - reshape(A * khatri_rao(C, B)', n, n, n), "fro")^2 + norm(M - B * D * B', "fro")^2);
+    conv(i) = J;
+    
+    if(J < options.epsilon)
+        display("Early NTF termination, minimum error reached at iteration: " + i);
+        break;
+    end
+
+    if(i > 1)
+        if(abs(conv(i) - conv(i-1)) < options.delta)
+            display("Early NTF termination, minimal change between iterations ");
+            break;
+        end
+    end
+end
+
+i = 1;
+
+A = A * diag(sum(B, i)) * diag(sum(C, i));
+A = A ./ sum(A, "all");
+
+D = diag(sum(B, i)) * D * diag(sum(B, i));
+D = D ./ sum(D, "all");
+
+B = B * inv(diag(sum(B, i)));
+C = C * inv(diag(sum(C, i)));
+
+% A = A ./ sum(A, 1);
+% B = B ./ sum(B, 1);
+% C = C ./ sum(C, 1);
+% D = D ./ sum(D, 1);
+
+end

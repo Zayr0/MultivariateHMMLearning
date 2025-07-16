@@ -1,0 +1,15 @@
+function [O_hat, T_hat, Pi_hat] = LearnHKZ(P1, P21, P31, P321, k, d)
+% Data: N triples of observations, k - number of states , d - number of observations
+% Result: Hidden Markov model parameterized by O_hat, T_hat and Pi_hat
+
+[u, ~, ~] = svd(P21);
+U = u(:, 1:k);
+
+O_hat = zeros(d, k);
+
+for r = 1:d
+    O_hat(r, :) = (U' * P321(:, r, :)) * pinv(U' * P31);
+end
+Pi_hat
+
+end

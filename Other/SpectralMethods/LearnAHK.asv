@@ -1,0 +1,47 @@
+% [Anandkumar et al. 2012b] Animashree Anandkumar, Daniel Hsu and
+% Sham M. Kakade. A Method of Moments for Mixture Models and
+% Hidden Markov Models. arXiv preprint arXiv:1203.0683, pages 1–
+% 31, March 2012. (Cited on pages v, 2, 3, 11, 13, 14, 16, 17, 18, 19,
+% 21, 36, 39 and 40.)
+
+
+function [T_hat, O_hat] = LearnAHK(P31, P32, P312, k, d)
+    [u, ~, v] = svd(P31);
+    U3 = u(1:d, :);
+    U1 = v(:, 1:d)';
+
+    [~, ~, v] = svd(P32);
+    U2 = v(:, 1:d)';
+
+    Theta = RandOrthMat(k);
+
+    P312_U3_Thi = zeros(k, k, k);
+    B312_U3_Thi = zeros(k, k, k);
+
+    L = zeros(k, k);
+
+    for i = 1:k
+        Th_i = Theta(:, i);
+        U3_Th_i = U3 * Th_i;
+
+        for alpha = 1:d
+            P312_U3_Thi(:, :, i) = P312_U3_Thi(:, :, i) + U3_Th_i(alpha) * P312(:, :, alpha);
+        end
+
+        B312_U3_Thi(:, :, i) = (U3' * P312_U3_Thi(:, :, i) * U1) * pinv(U3' * P31 * U1);
+
+        [R, ~] = eig(B312_U3_Thi(:, :, i));
+        try
+            lambdas = inv(R) \ B312_U3_Thi(:, :, i) * R;
+            
+        catch
+            warning("Failure of LearnAHK. Calulating slice of L not possible. Iteration: " + i);
+            return
+
+        L(i, :) = diag(lambdas);
+    end
+
+    
+
+
+end

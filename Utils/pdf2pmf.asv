@@ -1,0 +1,3 @@
+function pmfs = pdf2pmf(PDs, num_bins, tail_cutoff)
+  
+end

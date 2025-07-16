@@ -1,0 +1,99 @@
+function [T, B, pi, output] = multivariate_coupled_cpd(P, k, d, n, alpha, rho, options)
+    
+    % Initialize the factor matrices and transition matrix
+    A = cell(n, 1); B = cell(n, 1); C = cell(n, 1);
+    P1 = cell(n, 1); P2 = cell(n, 1); P3 = cell(n, 1);
+    
+    if isfield(options, 'epsilon')
+        epsilon = options.epsilon;
+    else
+        epsilon = 1e-3;
+    end
+    
+    T = Stochasticize(eye(k) + epsilon * rand(k, k));
+    pi = findStationaryDistribution(T')';
+
+    for i = 1:n
+        A{i} = Stochasticize(ones(d,k) + epsilon * rand(d, k));
+        B{i} = Stochasticize(ones(d,k) + epsilon * rand(d, k));
+        C{i} = Stochasticize(ones(d,k) + epsilon * rand(d, k));
+
+        P1{i} = mode_n_matricization(P{i}, 1);
+        P2{i} = mode_n_matricization(P{i}, 2);
+        P3{i} = mode_n_matricization(P{i}, 3);
+    end
+    
+    % Allocate memory for error metrics: convergence of transition matrix,
+    % and tensor reconstruction error.
+    output.tconv = ones(1, options.maxIter);
+    output.recerr = ones(n, options.maxIter);
+    output.rellrecerr = ones(n, options.maxIter);
+
+
+    for iter = 1:options.maxIter
+        T_prev = T; % Save previous T to check convergence later
+        
+        % Calculate factor matrices of every joint probability tensor using
+        % ALS with partial dependece on common T
+        for i = 1:n
+            Ai = P1{i} * khatri_rao(C{i}, B{i}) * pinv((C{i}'*C{i}).*(B{i}'*B{i}));
+            A{i} = alpha * Ai + (1-alpha) * (B{i} * diag(pi) * T' / inv(diag(T * pi)));
+            A{i} = Stochasticize(A{i});
+            
+            B{i} = P2{i} * khatri_rao(C{i}, A{i}) * pinv((C{i}'*C{i}).*(A{i}'*A{i}));
+            B{i} = Stochasticize(B{i});
+
+            Ci = P3{i} * khatri_rao(B{i}, A{i}) * pinv((B{i}'*B{i}).*(A{i}'*A{i}));
+            C{i} = alpha * Ci + (1-alpha) * (B{i} * T);
+            C{i} = Stochasticize(C{i});
+        end
+        
+        Ts = cell(n,1);
+
+        % Calculate estimate of T1 as a permutation reference for other Ti's
+        Ts{1} = Stochasticize(pinv(B{1}) * C{1});
+        T = Ts{1}/n;
+
+        for i = 2:n
+            % Calculate Ti and permutation match to T1
+            Ts{i} = Stochasticize(pinv(B{i}) * C{i});
+            Pbest = PermutationFit(Ts{1}, Ts{i}, true);
+            Ts{i} = Pbest * Ts{i} * Pbest';
+            
+            % Calculate partial T by averaging all Ti's
+            T = T + Ts{i}/n;
+            
+            % Apply found permutation to all factor matrices
+            A{i} = A{i} * Pbest';
+            B{i} = B{i} * Pbest';
+            C{i} = C{i} * Pbest';
+        end
+        
+        % Update T whilst taking into consideration T_prev to reduce
+        % discontinuities.
+        T = rho * T_prev + (1-rho) * T;
+
+        % If T is ergodic, calculate pi based on T
+        pi = findStationaryDistribution(T')';
+
+        
+        % Set outputs
+        output.tconv(iter) = norm(T-T_prev, "fro") / norm(T, "fro");
+        for i = 1:n
+            genPi = cpdgen({A{i}, B{i}, C{i}});
+            output.recerr(i, iter) = norm(P{i} - genPi / sum(genPi, 'all'), "fro");
+            output.rellrecerr(i, iter) = norm(P{i} - genPi / sum(genPi, 'all'), "fro")/norm(P{i}, "fro");
+        end
+        
+        
+        % Check early stopping condition
+        if(output.tconv(iter) < options.tol)
+            break;
+        end
+
+    end
+
+    output.Ts = Ts; % Output all Ti's from the last iteration
+    output.tconv = output.tconv(1:iter);
+    output.recerr = output.recerr(:, 1:iter);
+end

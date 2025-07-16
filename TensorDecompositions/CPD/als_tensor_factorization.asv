@@ -1,0 +1,73 @@
+function [A, B, C, D, output] = als_tensor_factorization(T, M, k, rho, lambda, max_iters)
+    % ALS for Tensor Factorization with Matrix Regularization
+    % Inputs:
+    %   T - dxdxd Tensor
+    %   M - dxd Matrix
+    %   k - Rank of factorization
+    %   rho - Regularization parameter
+    %   max_iters - Number of ALS iterations
+    % Outputs:
+    %   A, B, C - d x k factor matrices
+    %   D - k x k core matrix
+    
+    d = size(T, 1);
+    
+    % Initialize A, B, C, D with random non-negative values
+    A = rand(d, k); A = A ./ sum(A, 'all');
+    B = rand(d, k); B = B ./ sum(B, 'all');
+    C = rand(d, k); C = C ./ sum(C, 'all');
+    D = rand(k, k); D = D ./ sum(D, 'all');
+
+    T1 = unfold(T, 1);
+    T2 = unfold(T, 2);
+    T3 = unfold(T, 3);
+    
+
+    output.relerr = ones(1, max_iters);
+
+    for iter = 1:max_iters
+
+        % Update A
+        K_BC = khatri_rao(C, B); % Kronecker product of B and C
+        % A = T1 * K_BC * pinv(K_BC' * K_BC);
+        A = T1 * K_BC * pinv((C'*C) .* (B'*B));
+        A = Stochasticize(abs(A));
+        
+        % Update B 
+        K_CA = khatri_rao(C, A);
+        % B = (T2 * K_CA * pinv(K_CA' * K_CA) + rho * M * B * D) * pinv(eye(k) + rho * D * (B') * B);
+        B = (T2 * K_CA * pinv((C'*C) .* (A'*A)) + rho * M * B * D) * pinv(eye(k) + rho * D * (B') * B);
+        B = Stochasticize(abs(B));
+        
+        % Update C
+        
+        K_BA = khatri_rao(B, A);
+        % C = T3 * K_BA * pinv(K_BA' * K_BA);
+        C = T3 * K_BA * pinv(K_BA' * K_BA);
+        C = Stochasticize(abs(C));
+        
+        % Update D
+        Binv = pinv(B' * B + lambda * eye(k));
+        D = Binv * (B') * M * B * Binv;
+        D = abs(D);
+        D = D ./ sum(D, 1);
+
+
+        output.relerr(iter) = (1/2) * (norm(T - reshape(A * khatri_rao(C, B)', size(T)), "fro")^2 + (rho/2) * norm(M - B * D * B', "fro")^2);
+    end
+end
+
+function T_unfold = unfold(T, mode)
+    % Unfold tensor T along the specified mode
+    d = size(T, 1);
+    switch mode
+        case 1
+            T_unfold = reshape(permute(T, [1, 2, 3]), d, []);
+        case 2
+            T_unfold = reshape(permute(T, [2, 1, 3]), d, []);
+        case 3
+            T_unfold = reshape(permute(T, [3, 1, 2]), d, []);
+        otherwise
+            error('Invalid mode');
+    end
+end

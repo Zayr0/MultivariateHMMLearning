@@ -1,0 +1,121 @@
+function [A, B, C, D, output] = cpd_als_multivariate(T, nk, options)
+    d = size(T, 1);
+    n = size(T, 4);
+    k = nk/n;
+
+    A = rand(d, nk);
+    B = rand(d, nk);
+    C = rand(d, nk);
+    D = rand(n, nk);
+
+    T1 = mode_n_matricization(T, 1);
+    T2 = mode_n_matricization(T, 2);
+    T3 = mode_n_matricization(T, 3);
+    T4 = mode_n_matricization(T, 4);
+
+    output.relerr = ones(1, options.maxIter);
+
+    for iter = 1:options.maxIter
+        A_old = A;
+        B_old = B;
+        C_old = C;
+        D_old = D;
+
+        A = T1 * khatri_rao(B, C, D) * pinv((C'*C) .* (B'*B) .* (D'*D));
+        A = Stochasticize(A);
+    
+        B = T2 * khatri_rao(A, C, D) * pinv((C'*C) .* (A'*A) .* (D'*D));
+        B = Stochasticize(B);
+        
+        C = T3 * khatri_rao(A, B, D) * pinv((B'*B) .* (A'*A) .* (D'*D));
+        C = Stochasticize(C);
+
+        D = T4 * khatri_rao(A, B, C) * pinv((C'*C) .* (B'*B) .* (A'*A));
+        D = projectD(D, k);
+
+        Dsum1 = sum(D, 1);
+        Dsum2 = sum(D, 2);
+
+        output.relerr(iter) = norm(T - cpdgen({A, B, C, D}), "fro")^2;
+
+        if norm(A - A_old, 'fro') < options.tol && ...
+           norm(B - B_old, 'fro') < options.tol && ...
+           norm(C - C_old, 'fro') < options.tol && ...
+           norm(D - D_old, 'fro') < options.tol
+            fprintf('Converged at iteration %d\n', iter);
+            break;
+        end
+    end
+
+    A = Stochasticize(A);
+    B = Stochasticize(B);
+    C = Stochasticize(C);
+
+    output.relerr = output.relerr(1:iter);
+    output.iters = 1:iter;
+
+end
+
+function D_bin = threshold_D(D, k)
+    [n, nk] = size(D);
+    D_bin = zeros(n, nk);  % Initialize binary matrix
+    
+    % Step 1: Ensure each row has exactly k ones
+    [~, idx_row] = sort(D, 2, 'descend');  % Sort each row in descending order
+    D_bin(sub2ind(size(D_bin), repmat(1:n, k, 1)', idx_row(:, 1:k))) = 1;
+    
+    % Step 2: Ensure each column has at most one 1
+    % Find the row indices with 1's in each column
+    col_ones = find(D_bin);
+    [~, unique_rows] = unique(mod(col_ones - 1, n), 'first');  % Ensure unique rows for each column
+    D_bin(:) = 0;  % Reset the matrix to zeros
+    D_bin(col_ones(unique_rows)) = 1;
+end
+
+function D_proj = projectD(D, k)
+    % D is the matrix of size n x (n*k)
+    % k is the number of ones required in each row of D
+    
+    [n, nk] = size(D);  % n = number of time series, nk = number of states (n*k)
+    
+    % Step 1: Row constraint (each row has exactly k ones, with no repeated column indices)
+    D_row = zeros(n, nk);  % Initialize the matrix for the row constraint
+    
+    used_columns = false(nk, 1);  % Keep track of which columns have been selected
+    
+    for i = 1:n
+        row = D(i, :);  % Current row
+        
+        % Sort row in descending order and get the column indices
+        [~, sorted_indices] = sort(row, 'descend');
+        
+        % Select the top k indices, ensuring that no column index is reused
+        selected_indices = zeros(1, k);  % Array to store the selected indices for this row
+        j = 1;
+        for idx = 1:k
+            % Find the first available column index (not already used)
+            selected_indices(idx) = sorted_indices(j);
+            
+            while used_columns(selected_indices(idx))
+                % If this column is already used, select the next one
+                j = j + 1;
+                selected_indices(idx) = sorted_indices(j);
+            end
+            
+            % Mark this column as used
+            used_columns(selected_indices(idx)) = true;
+        end
+        
+        % Set the selected columns to 1 in the current row
+        D_row(i, selected_indices) = 1;
+    end
+    
+    % Step 2: Column constraint (each column has exactly one one)
+    % After row constraint, we only need to make sure each column has one "1"
+    [~, col_indices] = max(D_row, [], 1);  % Find row indices with the maximum value (1)
+    
+    % Initialize D_proj and set the ones in the correct positions
+    D_proj = zeros(n, nk);
+    D_proj(sub2ind(size(D_proj), col_indices, 1:nk)) = 1;  % Set ones at the correct positions
+end
+

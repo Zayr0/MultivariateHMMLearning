@@ -1,0 +1,21 @@
+function [T, O, pi, k, d] = generateContinuousHMM(k, d, n, options)
+
+T = options.lambda * eye(k) + abs(randn(k, k));
+T = Stochasticize(T);
+pi = findStationaryDistribution(T');
+O = cell(n, k);
+
+if (options.distribution == "Normal")
+    sigma = 1;
+    spacing = 3;
+end
+
+
+
+
+
+
+
+
+end
+

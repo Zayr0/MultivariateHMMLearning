@@ -1,0 +1,26 @@
+function [observations, states] = generate_continuous_multivariate_hmm_sequence(T, O, pi, seq_length, nVar)
+    %   O is a n x k array containing normal distribution
+    [n, k] = size(O);
+
+    observations = zeros(n, seq_length);
+    states = zeros(1, seq_length);
+
+    cumsum_pi = cumsum(pi);
+    cumsum_T = cumsum(T, 1);
+
+    % Sample initial state from pi
+    state = find(rand < cumsum_pi, 1);
+
+    for t = 1:seq_length
+        states(t) = state;
+
+        % Sample observation from O(state, :)
+        for i = 1:n
+            observations(i, t) = random()
+            normrnd(O{i, state}.mu, O{i, state}.sigma) + normrnd(0, nVar);
+        end
+        
+        % Transition to the next state
+        state = find(rand < cumsum_T(:, state), 1);
+    end
+end
