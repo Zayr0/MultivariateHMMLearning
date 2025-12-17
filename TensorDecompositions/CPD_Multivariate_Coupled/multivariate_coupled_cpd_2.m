@@ -19,17 +19,32 @@ function [T, B, pi, output] = multivariate_coupled_cpd_2(P, K, D, N, alpha, rho,
     T = Stochasticize(eye(K) + epsilon * rand(K, K));
     pi = findStationaryDistribution(T')';
 
-    if ~isfield(options, 'Initialfactor')   
+    if ~isfield(options, 'FactorMatrixInitialization')   
         A = cell(N, 1); B = cell(N, 1); C = cell(N, 1);
+
         for n = 1:N
             A{n} = Stochasticize(ones(D,K) + epsilon * rand(D, K));
             B{n} = Stochasticize(ones(D,K) + epsilon * rand(D, K));
             C{n} = Stochasticize(ones(D,K) + epsilon * rand(D, K));
         end
+
+    elseif isfield(options, 'HMMMatrixInitialization')
+        A = cell(N, 1); B = cell(N, 1); C = cell(N, 1);
+
+        T = options.HMMMatrixInitialization{1};
+        Os = options.HMMMatrixInitialization{2};
+        pi = options.HMMMatrixInitialization{3};
+
+        for n = 1:N
+            B{n} = Os{n};
+            A{n} = B{n} * diag(pi) * T' / (diag(T * pi));
+            C{n} = B{n} * T;
+        end
+
     else            
-        A = options.Initialfactor{1};
-        B = options.Initialfactor{2};
-        C = options.Initialfactor{3};
+        A = options.FactorMatrixInitialization{1};
+        B = options.FactorMatrixInitialization{2};
+        C = options.FactorMatrixInitialization{3};
     end
 
     

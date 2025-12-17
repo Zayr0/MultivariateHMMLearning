@@ -19,17 +19,32 @@ function [T, B, pi, output] = multivariate_coupled_cpd_2(P, K, D, N, alpha, rho,
     T = Stochasticize(eye(K) + epsilon * rand(K, K));
     pi = findStationaryDistribution(T')';
 
-    if ~isfield(options, 'Initialfactor')   
+    if ~isfield(options, 'FactorMatrixInitialization')   
         A = cell(N, 1); B = cell(N, 1); C = cell(N, 1);
+
         for n = 1:N
             A{n} = Stochasticize(ones(D,K) + epsilon * rand(D, K));
             B{n} = Stochasticize(ones(D,K) + epsilon * rand(D, K));
             C{n} = Stochasticize(ones(D,K) + epsilon * rand(D, K));
         end
+
+    elseif isfield(options, 'HMMMatrixInitialization')
+        A = cell(N, 1); B = cell(N, 1); C = cell(N, 1);
+
+        T = options.HMMMatrixInitialization{1};
+        Os = options.HMMMatrixInitialization{2};
+        pi = options.HMMMatrixInitialization{3};
+
+        for n = 1:N
+            B{n} = Os{n};
+            A{n} = B{n} * diag(pi) * T' / (diag(T * pi));
+            C{n} = B{n} * T;
+        end
+
     else            
-        A = options.Initialfactor{1};
-        B = options.Initialfactor{2};
-        C = options.Initialfactor{3};
+        A = options.FactorMatrixInitialization{1};
+        B = options.FactorMatrixInitialization{2};
+        C = options.FactorMatrixInitialization{3};
     end
 
     
@@ -54,8 +69,8 @@ function [T, B, pi, output] = multivariate_coupled_cpd_2(P, K, D, N, alpha, rho,
         % Calculate factor matrices of every joint probability tensor using
         % ALS with partial dependece on common T
         for n = 1:N
-            A{n} = P1{n} * khatri_rao(C{n}, B{n}) * pinv((C{n}'*C{n}).*(B{n}'*B{n})) + alpha * (B{n} * diag(pi) * T' / inv(diag(T * pi)));
-            A{n} = Stochasticize(A{n});
+            A{n} = P1{n} * khatri_rao(C{n}, B{n}) * pinv((C{n}'*C{n}).*(B{n}'*B{n})) + alpha * (B{n} * diag(pi) * T' / (diag(T * pi)));
+            A{n} = Stochasticize(A{n} + cpd_options.epsilon * rand(size()));
             
             B{n} = P2{n} * khatri_rao(C{n}, A{n}) * pinv((C{n}'*C{n}).*(A{n}'*A{n})) + alpha * B{n};
             B{n} = Stochasticize(B{n});
@@ -115,7 +130,7 @@ function [T, B, pi, output] = multivariate_coupled_cpd_2(P, K, D, N, alpha, rho,
         output.tconv(iter) = norm(T-T_prev, "fro") / norm(T, "fro");
 
         if(isfield(options, 'True_T'))
-            output.Trec(iter) = norm(options.True_T - T, "fro")/norm(options.True_T, "fro");
+            output.Trec(iter) = norm(options.True_T - T, "fro");
         end
 
         for n = 1:N
@@ -127,10 +142,10 @@ function [T, B, pi, output] = multivariate_coupled_cpd_2(P, K, D, N, alpha, rho,
             output.emiscorr(n, iter) = sum(corrcoef(B{n}), "all");
             
             if(isfield(options, 'True_Os'))
-                output.Orec(n, iter) = norm(options.True_Os{n} - B{n}, "fro")/norm(options.True_Os{n}, "fro");
+                output.Orec(n, iter) = norm(options.True_Os{n} - B{n}, "fro");
             end
             if(isfield(options, 'True_Ps'))
-                output.Prec(n, iter) = norm(options.True_Ps{n} - genPn, "fro")/norm(options.True_Ps{n}, "fro");
+                output.Prec(n, iter) = norm(options.True_Ps{n} - genPn, "fro");
             end
         end
 
@@ -145,6 +160,9 @@ function [T, B, pi, output] = multivariate_coupled_cpd_2(P, K, D, N, alpha, rho,
     output.recerr = output.recerr(:, 1:iter);
     output.rellrecerr = output.rellrecerr(:, 1:iter);
     output.emiscorr = output.emiscorr(:, 1:iter);
+    output.A = A;
+    output.B = B;
+    output.C = C;
 
     output.Trec = output.Trec(:, 1:iter);
     output.Orec = output.Orec(:, 1:iter);
